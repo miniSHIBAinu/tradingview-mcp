@@ -1,11 +1,11 @@
-# Setup Guide for Claude Code
+# Setup Guide for MCP Clients
 
-This file is a step-by-step guide for Claude Code (or any LLM agent) to install and configure the TradingView MCP server. If a user asks you to install or set up this project, follow these steps exactly.
+This file is a step-by-step guide for Claude Code or another MCP-capable agent to install and configure the TradingView MCP server. If a user asks you to install or set up this project, follow these steps exactly.
 
 ## Step 1: Clone and Install
 
 ```bash
-git clone https://github.com/tradesdontlie/tradingview-mcp.git ~/tradingview-mcp
+git clone https://github.com/monet88/tradingview-mcp.git ~/tradingview-mcp
 cd ~/tradingview-mcp
 npm install
 ```
