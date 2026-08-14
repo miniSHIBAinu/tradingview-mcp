@@ -194,11 +194,25 @@ export async function setVisibleRange({ from, to, _deps }) {
       var bars = m.mainSeries().bars();
       var startIdx = bars.firstIndex();
       var endIdx = bars.lastIndex();
-      var fromIdx = startIdx, toIdx = endIdx;
+      var fromIdx = null, toIdx = endIdx;
+      var lastTime = null, step = null, prevTime = null;
+      var sampleStart = Math.max(startIdx, endIdx - 20);
       for (var i = startIdx; i <= endIdx; i++) {
         var v = bars.valueAt(i);
-        if (v && v[0] >= ${f} && fromIdx === startIdx) fromIdx = i;
+        if (v && v[0] >= ${f} && fromIdx === null) fromIdx = i;
         if (v && v[0] <= ${t}) toIdx = i;
+        if (v && i >= sampleStart) {
+          if (prevTime !== null) {
+            var delta = v[0] - prevTime;
+            if (delta > 0 && (step === null || delta < step)) step = delta;
+          }
+          prevTime = v[0];
+        }
+        if (v && i === endIdx) lastTime = v[0];
+      }
+      if (fromIdx === null) fromIdx = startIdx;
+      if (lastTime !== null && step !== null && ${t} > lastTime) {
+        toIdx = endIdx + Math.max(0, Math.round((${t} - lastTime) / step));
       }
       ts.zoomToBarsRange(fromIdx, toIdx);
     })()

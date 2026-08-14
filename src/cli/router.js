@@ -1,8 +1,9 @@
 /**
  * CLI command router using node:util parseArgs.
- * Zero dependencies — uses only Node.js built-ins.
+ * Argument parsing uses Node.js built-ins; successful commands disconnect cleanly before exit.
  */
 import { parseArgs } from 'node:util';
+import { disconnect } from '../connection.js';
 
 /** @type {Map<string, { description: string, options?: object, handler: Function, subcommands?: Map<string, object> }>} */
 const commands = new Map();
@@ -132,7 +133,8 @@ async function execute(handler, values, positionals) {
   try {
     const result = await handler(values, positionals);
     console.log(JSON.stringify(result, null, 2));
-    process.exit(0);
+    await disconnect();
+    process.exitCode = 0;
   } catch (err) {
     handleError(err);
   }
