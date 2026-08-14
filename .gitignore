@@ -5,3 +5,9 @@ temp_*
 *.log
 discovery-log.json
 rules.json
+
+# Local OpenAI Secure MCP Tunnel runtime
+.env
+openai-tunnel-client/
+START-TDV-MCP.cmd
+START-TDV-MCP.ps1
