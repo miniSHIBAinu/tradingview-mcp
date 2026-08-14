@@ -26,7 +26,7 @@ Contributions **must not** add features that:
 - **Reverse-engineer or redistribute TradingView's proprietary code** — no bundled TradingView source, no charting library code
 - **Access other users' data** — private scripts, watchlists, or account information of others
 
-Also out of scope — please keep these in your own fork or repo:
+Also out of scope — keep these in local/private configuration rather than this repository:
 
 - **Personal trading configurations** — `rules.json` is gitignored for this reason; watchlist/scanner configs, layouts, and personal `.mcp.json` files belong on your machine, not in the repo
 - **Pine Script strategies/indicators** — unless a minimal fixture needed by a test

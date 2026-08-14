@@ -48,6 +48,7 @@ describe('update() — guards', () => {
     const r = await update({ _deps: deps });
     assert.equal(r.success, false);
     assert.match(r.error, /git clone/);
+    assert.match(r.error, /github\.com\/monet88\/tradingview-mcp/);
   });
 
   it('refuses on a non-main branch', async () => {

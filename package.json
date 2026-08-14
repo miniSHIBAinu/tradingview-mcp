@@ -1,7 +1,15 @@
 {
   "name": "tradingview-mcp",
-  "version": "1.0.0",
-  "description": "MCP bridge for TradingView Desktop via Chrome DevTools Protocol",
+  "version": "0.1.0",
+  "description": "Independent MCP bridge for TradingView Desktop via Chrome DevTools Protocol",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/monet88/tradingview-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/monet88/tradingview-mcp/issues"
+  },
+  "homepage": "https://github.com/monet88/tradingview-mcp#readme",
   "type": "module",
   "main": "src/server.js",
   "bin": {
