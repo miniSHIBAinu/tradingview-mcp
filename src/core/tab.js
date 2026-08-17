@@ -252,7 +252,7 @@ export async function newTab({ layout, name } = {}) {
 export async function closeTab() {
   const before = await withShell((evalIn) => evalIn(`document.querySelectorAll('.tabs-container .tab').length`));
   if (before <= 1) {
-    throw new Error('Cannot close the last tab. Use tv_launch to restart TradingView instead.');
+    throw new Error('Cannot close the last tab. TradingView requires at least one open chart tab.');
   }
 
   const result = await withShell(async (evalIn) => {
