@@ -98,13 +98,17 @@ export function createMcpHttpServer(options = {}) {
         transport,
         createdAt: Date.now(),
         lastActiveAt: Date.now(),
+        closing: false,
       };
 
       sessions.set(newSessionId, sessionRecord);
 
       transport.onclose = () => {
         sessions.delete(newSessionId);
-        server.close().catch(() => {});
+        if (!sessionRecord.closing) {
+          sessionRecord.closing = true;
+          server.close().catch(() => {});
+        }
       };
 
       try {
@@ -138,14 +142,15 @@ export function createMcpHttpServer(options = {}) {
       });
     },
     async close() {
-      for (const [sessionId, session] of sessions.entries()) {
-        try {
-          await session.transport.close();
-        } catch { /* ignore */ }
-        try {
-          await session.server.close();
-        } catch { /* ignore */ }
-        sessions.delete(sessionId);
+      const activeSessions = Array.from(sessions.values());
+      sessions.clear();
+      for (const session of activeSessions) {
+        if (!session.closing) {
+          session.closing = true;
+          try {
+            await session.server.close();
+          } catch { /* ignore */ }
+        }
       }
       return new Promise((resolve) => {
         httpServer.close(() => resolve());
