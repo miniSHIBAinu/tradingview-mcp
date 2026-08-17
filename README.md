@@ -22,7 +22,7 @@ Independent MCP bridge maintained by `monet88` for AI-assisted TradingView Deskt
 
 This tool does not connect to TradingView's servers, modify any TradingView files, or intercept any network traffic. It communicates exclusively with your locally running TradingView Desktop instance via Chrome DevTools Protocol (CDP) — a standard debugging interface built into all Chromium/Electron applications by Google, including VS Code, Slack, and Discord.
 
-The debug port is disabled by default and must be explicitly enabled by you using a standard Chromium flag (`--remote-debugging-port=9222`). Nothing happens without that deliberate step.
+The debug port is disabled by default and must be explicitly enabled by you using a standard Chromium flag (`--remote-debugging-port=9333`). Nothing happens without that deliberate step.
 
 ## What This Tool Does Not Do
 
@@ -92,7 +92,7 @@ npm install
 
 ### 2. Launch TradingView with CDP
 
-TradingView Desktop must be running with Chrome DevTools Protocol enabled on port 9222.
+TradingView Desktop must be running with Chrome DevTools Protocol enabled on port 9333.
 
 **Mac:**
 ```bash
@@ -111,7 +111,7 @@ scripts\launch_tv_debug.bat
 
 **Or launch manually on any platform:**
 ```bash
-/path/to/TradingView --remote-debugging-port=9222
+/path/to/TradingView --remote-debugging-port=9333
 ```
 
 **Or use the MCP tool** (auto-detects your install):
@@ -338,12 +338,12 @@ Launch scripts and `tv_launch` auto-detect TradingView. If auto-detection fails:
 | **Windows** | `%LOCALAPPDATA%\TradingView\TradingView.exe`, `%PROGRAMFILES%\WindowsApps\TradingView*\TradingView.exe` |
 | **Linux** | `/opt/TradingView/tradingview`, `~/.local/share/TradingView/TradingView`, `/snap/tradingview/current/tradingview` |
 
-The key flag: `--remote-debugging-port=9222`
+The key flag: `--remote-debugging-port=9333`
 
 ## Testing
 
 ```bash
-# Requires TradingView running with --remote-debugging-port=9222
+# Requires TradingView running with --remote-debugging-port=9333
 npm test
 ```
 
@@ -352,11 +352,11 @@ npm test
 ## Architecture
 
 ```
-Claude Code  ←→  MCP Server (stdio)  ←→  CDP (port 9222)  ←→  TradingView Desktop (Electron)
+Claude Code  ←→  MCP Server (stdio)  ←→  CDP (port 9333)  ←→  TradingView Desktop (Electron)
 ```
 
 - **Transport**: MCP over stdio (84 tools) + CLI (`tv` command, 30 commands with 66 subcommands)
-- **Connection**: Chrome DevTools Protocol on localhost:9222
+- **Connection**: Chrome DevTools Protocol on localhost:9333
 - **Streaming**: Poll-and-diff loop with deduplication, JSONL output to stdout
 - **No dependencies** beyond `@modelcontextprotocol/sdk` and `chrome-remote-interface`
 
@@ -372,7 +372,7 @@ This tool is an independent MCP server that connects to Claude Code via the stan
 
 This project is provided **for personal, educational, and research purposes only**.
 
-**How this tool works:** This tool uses Chrome DevTools Protocol (CDP), the standard debugging interface built into Chromium-based applications. It does not reverse engineer any proprietary TradingView protocol, connect to TradingView's servers, or bypass any access controls. The debug port must be explicitly enabled by the user via a standard Chromium command-line flag (`--remote-debugging-port=9222`).
+**How this tool works:** This tool uses Chrome DevTools Protocol (CDP), the standard debugging interface built into Chromium-based applications. It does not reverse engineer any proprietary TradingView protocol, connect to TradingView's servers, or bypass any access controls. The debug port must be explicitly enabled by the user via a standard Chromium command-line flag (`--remote-debugging-port=9333`).
 
 By using this software, you acknowledge and agree that:
 
