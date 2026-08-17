@@ -1,0 +1,28 @@
+[Unit]
+Description=TradingView MCP Streamable HTTP Service (VPS Bridge)
+After=network.target
+Documentation=https://github.com/monet88/tradingview-mcp#readme
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/tdv-mcp
+EnvironmentFile=-/etc/tdv-mcp/tdv-mcp.env
+ExecStart=/usr/bin/node src/server-http.js
+Restart=always
+RestartSec=5s
+
+# Process security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/tdv-mcp/screenshots
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tdv-mcp
+
+[Install]
+WantedBy=multi-user.target

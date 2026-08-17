@@ -1,0 +1,29 @@
+# Caddy reverse proxy configuration for TDV MCP Streamable HTTP endpoint
+# Replace {$MCP_DOMAIN:mcp.example.com} with your actual VPS domain
+
+{$MCP_DOMAIN:mcp.example.com} {
+    # Forward all MCP requests to local Node.js service
+    reverse_proxy 127.0.0.1:3000 {
+        # Streaming and SSE headers configuration
+        flush_interval -1
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+    }
+
+    # Access logging
+    log {
+        output file /var/log/caddy/tdv-mcp-access.log {
+            roll_size 10MB
+            roll_keep 5
+        }
+    }
+}
