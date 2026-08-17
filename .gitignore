@@ -6,6 +6,10 @@ temp_*
 discovery-log.json
 rules.json
 
+# Bias watcher (session 5) — runtime state + test artifacts
+scripts/.watcher-state.json
+scripts/archive/
+
 # Local OpenAI Secure MCP Tunnel runtime
 .env
 openai-tunnel-client/

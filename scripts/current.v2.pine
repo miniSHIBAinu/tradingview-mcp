@@ -1,0 +1,165 @@
+//@version=6
+indicator("Consensus Dashboard", overlay=true, max_boxes_count=50, max_labels_count=50)
+
+// === INPUTS ===
+grpBias = "Bias Settings"
+htfRes       = input.timeframe("D", "HTF Resolution", group=grpBias)
+strongThresh = input.int(60, "Strong Threshold %", minval=50, maxval=90, group=grpBias, tooltip="Confidence must meet or exceed this for LONG/SHORT signal")
+weakThresh   = input.int(40, "Weak Threshold %", minval=20, maxval=59, group=grpBias, tooltip="Below strong but at/above this = WEAK LONG/SHORT (must be < strong)")
+
+grpRisk = "Risk Settings"
+atrLen = input.int(20, "ATR Length", group=grpRisk)
+slMult = input.float(1.5, "SL Multiplier (ATR)", step=0.1, group=grpRisk)
+tpMult = input.float(3.0, "TP Multiplier (ATR)", step=0.1, group=grpRisk)
+
+// === HTF BIAS ===
+htfClose = request.security(syminfo.tickerid, htfRes, close, barmerge.gaps_off, barmerge.lookahead_off)
+htfEma50 = request.security(syminfo.tickerid, htfRes, ta.ema(close, 50), barmerge.gaps_off, barmerge.lookahead_off)
+htfBull  = htfClose > htfEma50
+
+// === TF BIAS (EMA alignment) ===
+ema9   = ta.ema(close, 9)
+ema21  = ta.ema(close, 21)
+ema50  = ta.ema(close, 50)
+tfBull = ema9 > ema21 and ema21 > ema50
+tfBear = ema9 < ema21 and ema21 < ema50
+
+// === STRUCTURE (BOS via confirmed pivots) ===
+pivHi = ta.pivothigh(high, 1, 1)
+pivLo = ta.pivotlow(low, 1, 1)
+var float lastHi = na
+var float lastLo = na
+if not na(pivHi)
+    lastHi := pivHi
+if not na(pivLo)
+    lastLo := pivLo
+
+bosUp = not na(lastHi[1]) and close > lastHi[1] and close[1] <= lastHi[1]
+bosDn = not na(lastLo[1]) and close < lastLo[1] and close[1] >= lastLo[1]
+
+// === FVG (3-bar gap) ===
+fvgBull = low > high[2]
+fvgBear = high < low[2]
+
+// === ABSORPTION (vol spike + small body) ===
+atrVal    = ta.atr(atrLen)
+volAvg    = ta.sma(volume, 20)
+volSpike  = volume > volAvg * 1.5
+smallBody = (high - low) < atrVal * 0.5
+absBull   = volSpike and close > open and smallBody
+absBear   = volSpike and close < open and smallBody
+
+// === SESSION ===
+isNY = hour >= 13 and hour < 21
+
+// === VOTING ===
+var int votes = 0
+var int total = 0
+votes := 0
+total := 0
+
+if htfBull
+    votes += 1
+total += 1
+
+if tfBull
+    votes += 1
+else if tfBear
+    votes -= 1
+total += 1
+
+if bosUp
+    votes += 1
+else if bosDn
+    votes -= 1
+total += 1
+
+if fvgBull
+    votes += 1
+else if fvgBear
+    votes -= 1
+total += 1
+
+if absBull
+    votes += 1
+else if absBear
+    votes -= 1
+total += 1
+
+if isNY
+    votes += 1
+    total += 1
+
+confidence = total > 0 ? math.round((votes / total) * 100, 0) : 0
+absConf    = math.abs(confidence)
+
+// === BIAS with WEAK state (between weak and strong threshold) ===
+string bias = "NEUTRAL"
+if absConf >= strongThresh
+    bias := votes > 0 ? "LONG" : "SHORT"
+else if absConf >= weakThresh
+    bias := votes > 0 ? "WEAK LONG" : "WEAK SHORT"
+
+// === VISUAL CUES ===
+string biasEmoji = bias == "LONG" ? "🟢" : bias == "SHORT" ? "🔴" : bias == "WEAK LONG" ? "🟡" : bias == "WEAK SHORT" ? "🟠" : "⚪"
+color  biasBg    = bias == "LONG" ? color.new(color.green, 70) : bias == "SHORT" ? color.new(color.red, 70) : bias == "WEAK LONG" ? color.new(color.yellow, 70) : bias == "WEAK SHORT" ? color.new(color.orange, 70) : color.new(color.gray, 80)
+
+// === CONFIDENCE BAR (10 chars) ===
+barLen = int(math.round(absConf / 10, 0))
+string bar    = str.repeat("█", barLen) + str.repeat("░", 10 - barLen)
+color  barClr = votes > 0 ? color.green : votes < 0 ? color.red : color.gray
+
+// === ACTION GUIDANCE ===
+string action = switch bias
+    "LONG"       => "✅ Buy near SL zone"
+    "SHORT"      => "✅ Sell near SL zone"
+    "WEAK LONG"  => "⚠️ Lean long — wait confirm"
+    "WEAK SHORT" => "⚠️ Lean short — wait confirm"
+    => "⏸ Wait — no clear bias"
+
+// === RISK LEVELS ===
+slLong  = close - atrVal * slMult
+tpLong  = close + atrVal * tpMult
+slShort = close + atrVal * slMult
+tpShort = close - atrVal * tpMult
+
+// === TABLE (8 rows × 2 cols, compact) ===
+var table dash = table.new(position.top_right, 2, 8, border_width=1, border_color=color.gray)
+if barstate.islast
+    // Row 0: BIAS (large, colored)
+    table.cell(dash, 0, 0, "BIAS",       bgcolor=color.gray, text_color=color.white, text_size=size.normal)
+    table.cell(dash, 1, 0, biasEmoji + " " + bias, bgcolor=biasBg, text_color=color.white, text_size=size.normal)
+
+    // Row 1: Action (large, colored)
+    table.cell(dash, 0, 1, "Action",     bgcolor=color.gray, text_color=color.white, text_size=size.normal)
+    table.cell(dash, 1, 1, action,        bgcolor=biasBg,    text_color=color.white, text_size=size.normal)
+
+    // Row 2: Confidence (bar)
+    table.cell(dash, 0, 2, "Confidence", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 2, bar + " " + str.tostring(confidence) + "%", text_color=barClr)
+
+    // Row 3: Price + ATR
+    table.cell(dash, 0, 3, "Price / ATR", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 3, str.tostring(close, "#.##") + "  /  " + str.tostring(atrVal, "#.##"))
+
+    // Row 4: Voters 1/2 — HTF + TF + BOS
+    string htfTxt = htfBull ? "↑" : "↓"
+    string tfTxt  = tfBull ? "↑↑↑" : tfBear ? "↓↓↓" : "↔"
+    string bosTxt = bosUp ? "↑" : bosDn ? "↓" : "·"
+    table.cell(dash, 0, 4, "Voters 1/2", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 4, "HTF:" + htfTxt + "  TF:" + tfTxt + "  BOS:" + bosTxt)
+
+    // Row 5: Voters 2/2 — FVG + Absorption + Session
+    string fvgTxt = fvgBull ? "↑" : fvgBear ? "↓" : "·"
+    string absTxt = absBull ? "↑" : absBear ? "↓" : "·"
+    string sesTxt = isNY ? "✓" : "—"
+    table.cell(dash, 0, 5, "Voters 2/2", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 5, "FVG:" + fvgTxt + "  Abs:" + absTxt + "  NY:" + sesTxt)
+
+    // Row 6: SL/TP Long
+    table.cell(dash, 0, 6, "SL/TP Long", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 6, str.tostring(slLong, "#.##") + "  →  " + str.tostring(tpLong, "#.##"), text_color=color.green)
+
+    // Row 7: SL/TP Short
+    table.cell(dash, 0, 7, "SL/TP Short", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 7, str.tostring(slShort, "#.##") + "  →  " + str.tostring(tpShort, "#.##"), text_color=color.red)
