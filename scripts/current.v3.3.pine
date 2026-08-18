@@ -1,0 +1,459 @@
+//@version=6
+indicator("Consensus Dashboard v3.3", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+
+// =============================================================================
+// === ASSET PRESET (v3.2: auto-effective SL/TP via switch) ===
+// =============================================================================
+// Pine v6 const->series limitation: can't change input defaults dynamically.
+// Workaround: compute effective SL/TP at runtime from selected asset type.
+grpAsset = "Asset Preset"
+assetType = input.string("Custom", "Asset", options=["Custom","Gold","Silver","BTC","ETH","Oil","Forex"], group=grpAsset, tooltip="Pick your asset. SL/TP defaults below are tuned for swing trading:\n• Gold: SL=1.5, TP=3\n• Silver: SL=2.0, TP=4\n• BTC: SL=2.0, TP=4\n• ETH: SL=1.5, TP=3\n• Oil: SL=1.5, TP=3\n• Forex: SL=1.0, TP=2\n• Custom: uses your input below")
+
+// =============================================================================
+// === INPUTS ===
+// =============================================================================
+grpBias = "Bias Settings"
+htfRes       = input.timeframe("D", "HTF Resolution", group=grpBias, tooltip="Higher timeframe for macro bias. Default Daily.\nMTF (intermediate) is auto-computed from current TF: 1m→5, 3m→15, 5m→15, 15m→1h, 30m→2h, 45m→3h, 1h→4h, 2h→D, 4h→W, D→W, W→M")
+strongThresh = input.int(60, "Strong Threshold %", minval=50, maxval=90, group=grpBias)
+weakThresh   = input.int(40, "Weak Threshold %", minval=20, maxval=59, group=grpBias)
+noSigThresh  = input.int(30, "No-Signal Threshold %", minval=10, maxval=49, group=grpBias, tooltip="If |confidence| < this, bias shows NO SIGNAL (suppress weak signals).")
+requireVol   = input.bool(true, "Require volume confirmation on BOS", group=grpBias)
+
+grpRisk = "Risk Settings"
+atrLen  = input.int(20, "ATR Length", minval=5, maxval=100, group=grpRisk)
+slInp   = input.float(1.5, "SL Multiplier (ATR) — Custom only", step=0.1, group=grpRisk)
+tpInp   = input.float(3.0, "TP Multiplier (ATR) — Custom only", step=0.1, group=grpRisk)
+
+grpStats = "Backtest Stats"
+bosAccLookback = input.int(50, "BOS Accuracy Lookback (bars)", minval=10, maxval=200, group=grpStats, tooltip="How many bars back to evaluate BOS events for accuracy stat")
+bosAccWinBars  = input.int(10, "BOS Win Threshold (bars)", minval=3, maxval=50, group=grpStats, tooltip="How many bars ahead price must move in BOS direction to count as a win")
+
+grpDraw = "Drawings"
+showHTF    = input.bool(true, "Show HTF EMA line", group=grpDraw)
+showBOS    = input.bool(true, "Show BOS lines", group=grpDraw)
+showFVG    = input.bool(true, "Show FVG boxes", group=grpDraw)
+showOB     = input.bool(true, "Show Order Blocks", group=grpDraw)
+showSweep  = input.bool(true, "Show Liquidity Sweep labels", group=grpDraw)
+showKZ     = input.bool(true, "Shade killzone background", group=grpDraw)
+showPDisc  = input.bool(true, "Tint premium/discount zone", group=grpDraw)
+
+// =============================================================================
+// === ASSET PRESET → effective SL/TP (series, computed each bar) ===
+// =============================================================================
+float effSL = switch assetType
+    "Gold"   => 1.5
+    "Silver" => 2.0
+    "BTC"    => 2.0
+    "ETH"    => 1.5
+    "Oil"    => 1.5
+    "Forex"  => 1.0
+    => slInp
+float effTP = switch assetType
+    "Gold"   => 3.0
+    "Silver" => 4.0
+    "BTC"    => 4.0
+    "ETH"    => 3.0
+    "Oil"    => 3.0
+    "Forex"  => 2.0
+    => tpInp
+
+// =============================================================================
+// === MTF RESOLUTION (auto-compute from current TF) ===
+// =============================================================================
+f_selectMtf() =>
+    if timeframe.isminutes
+        switch timeframe.period
+            "1"   => "5"
+            "3"   => "15"
+            "5"   => "15"
+            "15"  => "60"
+            "30"  => "120"
+            "45"  => "180"
+            "60"  => "240"
+            "120" => "D"
+            "180" => "D"
+            "240" => "W"
+            => "D"
+    else
+        if timeframe.isdaily
+            "W"
+        else
+            "M"
+
+string mtfRes = f_selectMtf()
+
+// =============================================================================
+// === HTF BIAS (SYMMETRIC + SLOPE) ===
+// =============================================================================
+htfClose     = request.security(syminfo.tickerid, htfRes, close,  barmerge.gaps_off, barmerge.lookahead_off)
+htfEma50     = request.security(syminfo.tickerid, htfRes, ta.ema(close, 50), barmerge.gaps_off, barmerge.lookahead_off)
+htfEma50P5   = request.security(syminfo.tickerid, htfRes, ta.ema(close, 50)[5], barmerge.gaps_off, barmerge.lookahead_off)
+htfEmaRising = htfEma50 > htfEma50P5
+
+htfBull       = htfClose > htfEma50
+htfBear       = htfClose < htfEma50
+htfStrongBull = htfBull and htfEmaRising
+htfStrongBear = htfBear and not htfEmaRising
+
+// v3.2: plot HTF EMA line
+plot(showHTF ? htfEma50 : na, "HTF EMA50", color=color.new(color.orange, 0), linewidth=2)
+
+// =============================================================================
+// === LTF BIAS (current TF EMA alignment) ===
+// =============================================================================
+ema9   = ta.ema(close, 9)
+ema21  = ta.ema(close, 21)
+ema50  = ta.ema(close, 50)
+ltfBull = ema9 > ema21 and ema21 > ema50
+ltfBear = ema9 < ema21 and ema21 < ema50
+
+// =============================================================================
+// === MTF BIAS (intermediate TF via mtfRes) ===
+// =============================================================================
+mtfEma9   = request.security(syminfo.tickerid, mtfRes, ta.ema(close, 9),  barmerge.gaps_off, barmerge.lookahead_off)
+mtfEma21  = request.security(syminfo.tickerid, mtfRes, ta.ema(close, 21), barmerge.gaps_off, barmerge.lookahead_off)
+mtfEma50  = request.security(syminfo.tickerid, mtfRes, ta.ema(close, 50), barmerge.gaps_off, barmerge.lookahead_off)
+mtfBull   = mtfEma9 > mtfEma21 and mtfEma21 > mtfEma50
+mtfBear   = mtfEma9 < mtfEma21 and mtfEma21 < mtfEma50
+
+// =============================================================================
+// === 3-TF CONFLUENCE (HTF + MTF + LTF alignment) ===
+// =============================================================================
+tfAlignedBull = htfBull  and mtfBull  and ltfBull
+tfAlignedBear = htfBear  and mtfBear  and ltfBear
+tfAligned     = tfAlignedBull or tfAlignedBear
+
+// =============================================================================
+// === STRUCTURE (BOS via confirmed pivots) + persistent trend state ===
+// =============================================================================
+pivHi = ta.pivothigh(high, 1, 1)
+pivLo = ta.pivotlow(low, 1, 1)
+var float lastHi = na
+var float lastLo = na
+if not na(pivHi)
+    lastHi := pivHi
+if not na(pivLo)
+    lastLo := pivLo
+
+bosUp = not na(lastHi[1]) and close > lastHi[1] and close[1] <= lastHi[1]
+bosDn = not na(lastLo[1]) and close < lastLo[1] and close[1] >= lastLo[1]
+
+var int structure = 0
+if bosUp
+    structure := 1
+else if bosDn
+    structure := -1
+
+// v3.2: draw BOS lines
+if showBOS and bosUp
+    line.new(bar_index - 1, lastHi[1], bar_index + 10, lastHi[1], color=color.new(color.green, 0), width=2, style=line.style_solid, extend=extend.right)
+if showBOS and bosDn
+    line.new(bar_index - 1, lastLo[1], bar_index + 10, lastLo[1], color=color.new(color.red, 0), width=2, style=line.style_solid, extend=extend.right)
+
+// =============================================================================
+// === FVG (3-bar gap, ICT-style) ===
+// =============================================================================
+fvgBull = low > high[2]
+fvgBear = high < low[2]
+
+// v3.2: draw FVG boxes
+if showFVG and fvgBull
+    box.new(bar_index - 1, low, bar_index + 5, high[2], border_color=color.new(color.green, 30), bgcolor=color.new(color.green, 88), text="Bull FVG", text_color=color.green, text_size=size.tiny, extend=extend.right)
+if showFVG and fvgBear
+    box.new(bar_index - 1, high, bar_index + 5, low[2], border_color=color.new(color.red, 30), bgcolor=color.new(color.red, 88), text="Bear FVG", text_color=color.red, text_size=size.tiny, extend=extend.right)
+
+// =============================================================================
+// === ABSORPTION (vol spike + small body + long wick) ===
+// =============================================================================
+atrVal    = ta.atr(atrLen)
+volAvg    = ta.sma(volume, 20)
+volSpike  = volume > volAvg * 1.5
+smallBody = math.abs(close - open) < atrVal * 0.3
+longWick  = (math.min(close, open) - low) > atrVal * 0.4 or (high - math.max(close, open)) > atrVal * 0.4
+absBull   = volSpike and smallBody and longWick and close > open
+absBear   = volSpike and smallBody and longWick and close < open
+
+// =============================================================================
+// === ORDER BLOCKS (v3.2: P2 - last opposing candle before BOS) ===
+// =============================================================================
+// v3.3: track latest bull/bear OB zones for retest detection (P4).
+// OB tracking runs ALWAYS (so V10 voter works) — only drawing is gated by showOB.
+var float bullOBTop = na
+var float bullOBBot = na
+var float bearOBTop = na
+var float bearOBBot = na
+
+if bosUp
+    // Find last bearish candle (close < open) in last 10 bars
+    for i = 1 to 10
+        if close[i] < open[i]
+            bullOBTop := high[i]
+            bullOBBot := low[i]
+            if showOB
+                box.new(bar_index - i, high[i], bar_index + 30, low[i], border_color=color.new(color.teal, 0), bgcolor=color.new(color.teal, 85), text="Bull OB", text_color=color.teal, text_size=size.tiny, extend=extend.right)
+            break
+if bosDn
+    // Find last bullish candle (close > open) in last 10 bars
+    for i = 1 to 10
+        if close[i] > open[i]
+            bearOBTop := high[i]
+            bearOBBot := low[i]
+            if showOB
+                box.new(bar_index - i, high[i], bar_index + 30, low[i], border_color=color.new(color.maroon, 0), bgcolor=color.new(color.maroon, 85), text="Bear OB", text_color=color.maroon, text_size=size.tiny, extend=extend.right)
+            break
+
+// =============================================================================
+// === LIQUIDITY SWEEP (v3.2: P3 - stop hunt detection) ===
+// =============================================================================
+// Bearish sweep (stop hunt above): wick above last swing high then close back below
+liqSweepBear = not na(lastHi[1]) and high > lastHi[1] and close < lastHi[1] and close > open
+// Bullish sweep (stop hunt below): wick below last swing low then close back above
+liqSweepBull = not na(lastLo[1]) and low < lastLo[1] and close > lastLo[1] and close < open
+
+if showSweep and liqSweepBear
+    label.new(bar_index, high, "Sweep ↑↓", style=label.style_label_down, color=color.new(color.red, 20), textcolor=color.white, size=size.tiny, tooltip="Bearish liquidity sweep: wick above swing high, closed back — reversal signal")
+if showSweep and liqSweepBull
+    label.new(bar_index, low, "Sweep ↓↑", style=label.style_label_up, color=color.new(color.green, 20), textcolor=color.white, size=size.tiny, tooltip="Bullish liquidity sweep: wick below swing low, closed back — reversal signal")
+
+// =============================================================================
+// === KILLZONES (ICT-style, split AM/PM NY + London) ===
+// =============================================================================
+isLondon = hour >= 8  and hour < 10
+isNYAM   = hour >= 12 and hour < 15
+isNYPM   = hour >= 19 and hour < 22
+inKillzone = isLondon or isNYAM or isNYPM
+
+bgcolor(showKZ and inKillzone ? color.new(color.blue, 95) : na, title="Killzone")
+
+// =============================================================================
+// === VOLUME CONFIRMATION ===
+// =============================================================================
+volConfirm = volume > volAvg * 1.2
+bosUpValid = bosUp and (not requireVol or volConfirm)
+bosDnValid = bosDn and (not requireVol or volConfirm)
+
+// =============================================================================
+// === ORDER BLOCK RETEST (v3.3: P4 - V10 voter) ===
+// =============================================================================
+// Bullish retest: price dips into last bull OB zone (wick) but closes above OB bottom
+obRetestBull = not na(bullOBTop) and low <= bullOBTop and close > bullOBBot
+// Bearish retest: price spikes into last bear OB zone (wick) but closes below OB top
+obRetestBear = not na(bearOBTop) and high >= bearOBBot and close < bearOBTop
+
+// =============================================================================
+// === VOTING (v3.3: 10 voters — added OB retest as V10) ===
+// =============================================================================
+var int votes = 0
+var int total = 0
+votes := 0
+total := 0
+
+// V1: HTF
+if htfStrongBull
+    votes += 1
+else if htfStrongBear
+    votes -= 1
+total += 1
+
+// V2: LTF
+if ltfBull
+    votes += 1
+else if ltfBear
+    votes -= 1
+total += 1
+
+// V3: BOS (vol-gated)
+if bosUpValid
+    votes += 1
+else if bosDnValid
+    votes -= 1
+total += 1
+
+// V4: FVG
+if fvgBull
+    votes += 1
+else if fvgBear
+    votes -= 1
+total += 1
+
+// V5: Absorption
+if absBull
+    votes += 1
+else if absBear
+    votes -= 1
+total += 1
+
+// V6: Killzone (boost)
+if inKillzone
+    votes += 1
+    total += 1
+
+// V7: 3-TF confluence — strong signal
+if tfAlignedBull
+    votes += 1
+else if tfAlignedBear
+    votes -= 1
+total += 1
+
+// V8: Liquidity sweep — reversal signal (counter-direction)
+// Bull sweep (swept lows) → vote bull (reversal up)
+// Bear sweep (swept highs) → vote bear (reversal down)
+if liqSweepBull
+    votes += 1
+else if liqSweepBear
+    votes -= 1
+total += 1
+
+// V9: MTF alignment as separate voter
+if mtfBull
+    votes += 1
+else if mtfBear
+    votes -= 1
+total += 1
+
+// V10: OB retest (v3.3 NEW) — price entering recent OB zone confirms direction
+if obRetestBull
+    votes += 1
+else if obRetestBear
+    votes -= 1
+total += 1
+
+confidence = total > 0 ? math.round((votes / total) * 100, 0) : 0
+absConf    = math.abs(confidence)
+
+// =============================================================================
+// === BIAS with NO SIGNAL state (v3.3: P5) ===
+// =============================================================================
+string bias = "NEUTRAL"
+if absConf >= strongThresh
+    bias := votes > 0 ? "LONG" : "SHORT"
+else if absConf >= weakThresh
+    bias := votes > 0 ? "WEAK LONG" : "WEAK SHORT"
+else if absConf < noSigThresh
+    bias := "NO SIGNAL"
+
+// =============================================================================
+// === BOS ACCURACY STAT (v3.3: P6 - backtest mode) ===
+// =============================================================================
+// For each BOS in last N bars, check if price moved in BOS direction by winBars ahead
+bosAccTotal = 0
+bosAccWins  = 0
+for i = 1 to bosAccLookback
+    if bosUp[i]
+        bosAccTotal += 1
+        if close > close[i]
+            bosAccWins += 1
+    else if bosDn[i]
+        bosAccTotal += 1
+        if close < close[i]
+            bosAccWins += 1
+bosAccPct = bosAccTotal > 0 ? math.round((bosAccWins / bosAccTotal) * 100, 0) : na
+
+// =============================================================================
+// === PREMIUM / DISCOUNT (50% equilibrium of recent swing) ===
+// =============================================================================
+swingHi = ta.pivothigh(high, 5, 5)
+swingLo = ta.pivotlow(low, 5, 5)
+var float rangeHi = na
+var float rangeLo = na
+if not na(swingHi)
+    rangeHi := swingHi
+if not na(swingLo)
+    rangeLo := swingLo
+eq50 = na(rangeHi) or na(rangeLo) ? na : (rangeHi + rangeLo) / 2
+inPremium  = not na(eq50) and close > eq50
+inDiscount = not na(eq50) and close < eq50
+
+// v3.2: tint premium/discount
+bgcolor(showPDisc and inPremium  and not inKillzone ? color.new(color.red, 96) : na, title="Premium")
+bgcolor(showPDisc and inDiscount and not inKillzone ? color.new(color.green, 96) : na, title="Discount")
+
+// =============================================================================
+// === VISUAL CUES ===
+// =============================================================================
+string biasEmoji = bias == "LONG" ? "🟢" : bias == "SHORT" ? "🔴" : bias == "WEAK LONG" ? "🟡" : bias == "WEAK SHORT" ? "🟠" : bias == "NO SIGNAL" ? "⚫" : "⚪"
+color  biasBg    = bias == "LONG" ? color.new(color.green, 70) : bias == "SHORT" ? color.new(color.red, 70) : bias == "WEAK LONG" ? color.new(color.yellow, 70) : bias == "WEAK SHORT" ? color.new(color.orange, 70) : bias == "NO SIGNAL" ? color.new(color.gray, 70) : color.new(color.gray, 80)
+
+barLen    = int(math.round(absConf / 10, 0))
+string bar    = str.repeat("█", barLen) + str.repeat("░", 10 - barLen)
+color  barClr = votes > 0 ? color.green : votes < 0 ? color.red : color.gray
+
+// =============================================================================
+// === ACTION GUIDANCE (with premium/discount + confluence hint) ===
+// =============================================================================
+string action = switch bias
+    "LONG"       => inDiscount ? (tfAligned ? "✅ Strong buy (3-TF + discount)" : "✅ Buy in discount zone") : (tfAligned ? "✅ Strong buy (3-TF aligned)" : "✅ Buy — wait pullback")
+    "SHORT"      => inPremium  ? (tfAligned ? "✅ Strong sell (3-TF + premium)" : "✅ Sell in premium zone")  : (tfAligned ? "✅ Strong sell (3-TF aligned)" : "✅ Sell — wait pullback")
+    "WEAK LONG"  => inDiscount ? "⚠️ Lean long (discount)"  : "⚠️ Lean long — wait confirm"
+    "WEAK SHORT" => inPremium  ? "⚠️ Lean short (premium)"  : "⚠️ Lean short — wait confirm"
+    "NO SIGNAL"  => "🚫 No signal — confidence too low"
+    => "⏸ Wait — no clear bias"
+
+// =============================================================================
+// === RISK LEVELS (using effective SL/TP from asset preset) ===
+// =============================================================================
+slLong  = close - atrVal * effSL
+tpLong  = close + atrVal * effTP
+slShort = close + atrVal * effSL
+tpShort = close - atrVal * effTP
+
+// =============================================================================
+// === TABLE (v3.3: 11 rows — added V10 OB, BOS Acc stat) ===
+// =============================================================================
+var table dash = table.new(position.top_right, 2, 11, border_width=1, border_color=color.gray)
+if barstate.islast
+    // Row 0: BIAS
+    table.cell(dash, 0, 0, "BIAS",       bgcolor=color.gray, text_color=color.white, text_size=size.normal)
+    table.cell(dash, 1, 0, biasEmoji + " " + bias, bgcolor=biasBg, text_color=color.white, text_size=size.normal)
+
+    // Row 1: Action
+    table.cell(dash, 0, 1, "Action",     bgcolor=color.gray, text_color=color.white, text_size=size.normal)
+    table.cell(dash, 1, 1, action,        bgcolor=biasBg,    text_color=color.white, text_size=size.normal)
+
+    // Row 2: Confidence (bar)
+    table.cell(dash, 0, 2, "Confidence", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 2, bar + " " + str.tostring(confidence) + "%", text_color=barClr)
+
+    // Row 3: Price + ATR
+    table.cell(dash, 0, 3, "Price / ATR", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 3, str.tostring(close, "#.##") + "  /  " + str.tostring(atrVal, "#.##"))
+
+    // Row 4: 3-TF — HTF/MTF/LTF alignment
+    string htfEmoji = htfStrongBull ? "🟢↑↑" : htfBull ? "↑" : htfStrongBear ? "🔴↓↓" : htfBear ? "↓" : "·"
+    string mtfEmoji = mtfBull ? "↑" : mtfBear ? "↓" : "↔"
+    string ltfEmoji = ltfBull ? "↑" : ltfBear ? "↓" : "↔"
+    string alignTxt = tfAligned ? " ✓" : ""
+    table.cell(dash, 0, 4, "3-TF", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 4, "H:" + htfEmoji + " M:" + mtfEmoji + " L:" + ltfEmoji + alignTxt, text_color=tfAligned ? color.green : color.white)
+
+    // Row 5: Voters 1/3 — HTF/LTF/BOS
+    string bosTxt = bosUpValid ? "↑" : bosDnValid ? "↓" : "·"
+    table.cell(dash, 0, 5, "Voters 1/3", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 5, "HTF:" + (htfStrongBull ? "↑↑" : htfBull ? "↑" : htfStrongBear ? "↓↓" : htfBear ? "↓" : "·") + "  LTF:" + (ltfBull ? "↑↑↑" : ltfBear ? "↓↓↓" : "↔") + "  BOS:" + bosTxt)
+
+    // Row 6: Voters 2/3 — FVG/Abs/Sweep
+    string fvgTxt  = fvgBull ? "↑" : fvgBear ? "↓" : "·"
+    string absTxt  = absBull ? "↑" : absBear ? "↓" : "·"
+    string sweepTxt = liqSweepBull ? "↑" : liqSweepBear ? "↓" : "·"
+    table.cell(dash, 0, 6, "Voters 2/3", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 6, "FVG:" + fvgTxt + "  Abs:" + absTxt + "  Swp:" + sweepTxt)
+
+    // Row 7: Voters 3/3 — MTF/KZ/Confluence/OB
+    string kzTxt = inKillzone ? "✓" : "—"
+    string confTxt = tfAlignedBull ? "↑" : tfAlignedBear ? "↓" : "·"
+    string obTxt = obRetestBull ? "↑" : obRetestBear ? "↓" : "·"
+    table.cell(dash, 0, 7, "Voters 3/3", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 7, "MTF:" + (mtfBull ? "↑" : mtfBear ? "↓" : "↔") + "  KZ:" + kzTxt + "  Cnfl:" + confTxt + "  OB:" + obTxt)
+
+    // Row 8: SL/TP Long
+    table.cell(dash, 0, 8, "SL/TP Long", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 8, str.tostring(slLong, "#.##") + "  →  " + str.tostring(tpLong, "#.##") + " (" + assetType + ")", text_color=color.green)
+
+    // Row 9: SL/TP Short
+    table.cell(dash, 0, 9, "SL/TP Short", bgcolor=color.gray, text_color=color.white)
+    table.cell(dash, 1, 9, str.tostring(slShort, "#.##") + "  →  " + str.tostring(tpShort, "#.##") + " (" + assetType + ")", text_color=color.red)
+
+    // Row 10: BOS Accuracy (v3.3 NEW: P6 backtest stat)
+    table.cell(dash, 0, 10, "BOS Acc", bgcolor=color.gray, text_color=color.white)
+    string bosAccTxt = na(bosAccPct) ? "—" : str.tostring(bosAccWins) + "/" + str.tostring(bosAccTotal) + " (" + str.tostring(bosAccPct) + "%)"
+    table.cell(dash, 1, 10, bosAccTxt, text_color=na(bosAccPct) ? color.gray : (bosAccPct >= 50 ? color.green : color.red))
