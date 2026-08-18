@@ -2,11 +2,12 @@ import { z } from 'zod';
 import { jsonResult } from './_format.js';
 import * as core from '../core/health.js';
 import { update } from '../core/update.js';
+import { CDP_HOST, CDP_PORT } from '../connection.js';
 
 export function registerHealthTools(server, { includeLaunch = true } = {}) {
   server.tool('tv_health_check', 'Check CDP connection to TradingView and return current chart state', {}, async () => {
     try { return jsonResult(await core.healthCheck()); }
-    catch (err) { return jsonResult({ success: false, error: err.message, hint: 'TradingView is not running with CDP enabled on port 9333. Please open TradingView Desktop manually with remote debugging enabled.' }, true); }
+    catch (err) { return jsonResult({ success: false, error: err.message, hint: `TradingView is not running with CDP enabled on ${CDP_HOST}:${CDP_PORT}. Open TradingView Desktop manually with --remote-debugging-port=${CDP_PORT}, or check TV_CDP_PORT env var if you expect a different port.` }, true); }
   });
 
   server.tool('tv_discover', 'Report which known TradingView API paths are available and their methods', {}, async () => {
@@ -21,7 +22,7 @@ export function registerHealthTools(server, { includeLaunch = true } = {}) {
 
   if (includeLaunch) {
     server.tool('tv_launch', 'Launch TradingView Desktop with Chrome DevTools Protocol (remote debugging) enabled. Auto-detects install location on Mac, Windows, and Linux, including Windows MSIX/Store installs. If a Store install blocks the debug port, automatically relaunches from a local package copy (result then includes msix_local_copy: true; the first fallback launch copies ~330MB one time, so it can take a minute).', {
-      port: z.coerce.number().optional().describe('CDP port (default 9333)'),
+      port: z.coerce.number().optional().describe(`CDP port (default ${CDP_PORT} from TV_CDP_PORT env or 9333)`),
       kill_existing: z.coerce.boolean().optional().describe('Kill existing TradingView instances first (default true)'),
     }, async ({ port, kill_existing }) => {
       try { return jsonResult(await core.launch({ port, kill_existing })); }

@@ -1,6 +1,7 @@
 import { register } from '../router.js';
 import * as core from '../../core/health.js';
 import { update } from '../../core/update.js';
+import { CDP_PORT } from '../../connection.js';
 
 register('status', {
   description: 'Check CDP connection to TradingView',
@@ -10,7 +11,7 @@ register('status', {
 register('launch', {
   description: 'Launch TradingView with CDP enabled',
   options: {
-    port: { type: 'string', short: 'p', description: 'CDP port (default 9333)' },
+    port: { type: 'string', short: 'p', description: `CDP port (default ${CDP_PORT} from TV_CDP_PORT env or 9333)` },
     'no-kill': { type: 'boolean', description: 'Do not kill existing instances' },
   },
   handler: (opts) => core.launch({
