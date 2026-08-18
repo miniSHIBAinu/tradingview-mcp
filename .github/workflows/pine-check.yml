@@ -31,7 +31,9 @@ jobs:
         run: npm ci
 
       - name: Run unit tests
-        run: npm test
+        # Use test:unit instead of test because test includes tests/e2e.test.js
+        # which needs a live TradingView Desktop at CDP port 9333. CI has no TV.
+        run: npm run test:unit
 
       - name: Static check Pine declarations (declare-before-use)
         run: |
