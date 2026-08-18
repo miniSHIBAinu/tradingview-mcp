@@ -364,13 +364,28 @@ Xây dựng **Consensus Dashboard v3.2** — Pine Script indicator overlay trên
 **Task 4 — CI workflow `pine-check`**
 - New: `scripts/check-pine-declarations.mjs` (4,813 B) — static checker for Pine v6 "declare before use" rule (CE10272 forward-ref detection)
 - New: `.github/workflows/pine-check.yml` (1,392 B) — GH Actions workflow on push/PR, runs:
-  1. `npm test` (existing 8 test suites)
+  1. `npm run test:unit` (excludes e2e.test.js which needs TV)
   2. Static checker on all `current.v*.pine` files
   3. `tv pine analyze` (offline, no TV needed)
 - Tested with synthetic forward-ref → detected correctly (exit 1)
 - Tested on v3.4 + v3.5 → 0 errors
+- **CI green**: After 3 fix iterations:
+  1. Removed `working-directory: tradingview-mcp` prefix (workflow file already in repo → path doubling)
+  2. Switched `npm test` → `npm run test:unit` (e2e test needs TV)
+  3. Made `tests/deployment.test.js` TV_CDP_PORT-port-agnostic + skipped `pine_check` suites in `tests/cli.test.js` and `tests/pine_analyze.test.js` for CI (need TradingView REST API)
+- Final CI run: all 7 main steps + post steps = success (run 32109344082)
 
-**Pending push**: All 4 tasks done in code. Need user OK to push to `chore/tdv-vps-foundation`.
+**All 4 tasks pushed** to `miniSHIBAinu/tradingview-mcp` @ `chore/tdv-vps-foundation`:
+- 0bceec4: env loader
+- 988cb55: v3.5
+- 80eff0b: docs migration
+- 818c8d1: CI workflow
+- 7d5d5f3: fix(ci) path-doubling
+- 8fa6562: fix(ci) test:unit
+- b47459b: fix(tests) deployment + cli
+- efaa082: fix(tests) pine_analyze skip
+
+**User will manual-save v3.5 to chart** (type char + Save + Update on chart) — Monaco dirty-state bug persists.
 
 ---
 
