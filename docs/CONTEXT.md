@@ -384,8 +384,137 @@ Xây dựng **Consensus Dashboard v3.2** — Pine Script indicator overlay trên
 - 8fa6562: fix(ci) test:unit
 - b47459b: fix(tests) deployment + cli
 - efaa082: fix(tests) pine_analyze skip
+- d63519c: docs CONTEXT.md update
 
 **User will manual-save v3.5 to chart** (type char + Save + Update on chart) — Monaco dirty-state bug persists.
+
+### Session 9 (2026-08-18) — CEO pre-check + 2 more bug fixes
+- **Trigger**: User asked for comprehensive audit: pre-check 4 tasks, fix all bugs, write to CONTEXT.md, evaluate /improve-codebase-architecture, decide if testsprite needed
+- **Pre-check 4 criteria (4 tasks)**: All 4 pass. v3.5 + env loader + docs migration + CI all work as designed. CI green (last 2 runs).
+- **2 new bugs found** (NOT in original 4 tasks, but uncovered by full test run):
+  1. `tests/launch.test.js:73` — `cdp_url` asserted to `'http://127.0.0.1:9333'` hardcoded. CI passed (no .env.local → default 9333), but local dev with `TV_CDP_PORT=9222` failed. **Fix**: derive from env vars.
+  2. `src/tools/health.js:9` + `:24`, `src/cli/commands/health.js:13` — "port 9333" hardcoded in error hint and zod/CLI descriptions. Misleading for users on port 9222. **Fix**: import `CDP_PORT` from `connection.js`, use dynamic value.
+- **3 fixed in commit `4ab80fe`**: All 179 unit tests now pass locally with `CI=true`. No remaining env-port bugs in code.
+- **Tested edge cases** of static Pine checker — found 2 false positives (function params shadowing var, var re-declaration), but they're documented limitations, not real bugs in v3.4/v3.5.
+
+### /improve-codebase-architecture scan (quick)
+- Loaded skill, did NOT do full HTML report (too heavy for this session)
+- Quick assessment: project is appropriately scoped (~200KB src, 26 modules). No clear "deepening" opportunities.
+- Architecture: `src/cli/commands/*.js` (16 flat handlers) + `src/core/*.js` (6 core) + `src/tools/*.js` (MCP wrappers). Each file does one thing.
+- No coupling that would benefit from seam extraction at this scale. **Recommendation**: keep as-is unless specific pain emerges.
+- Full skill run available on demand (would produce HTML report with deepening candidates)
+
+### testsprite decision
+- **Not needed**. Current testing is solid:
+  - 179 unit tests (Node's built-in test runner, 0 deps)
+  - CI on push/PR (test:unit + static checker + offline analyze)
+  - Static Pine CE10272 forward-ref checker
+  - Security audit (safeString, requireFinite, path traversal)
+  - 8 E2E tests (need TV, run manually with `npm run test:e2e`)
+- testsprite is for AI-generated test coverage. We have manual chart validation (user runs v3.5 on real chart) + automated CI + static analysis. Adding testsprite would be overkill.
+
+---
+
+## Feature Status (project state 2026-08-18)
+
+### Pine Script `Consensus Dashboard v3.5`
+
+| Feature | Version | Status | Tested? | Note |
+|---|---|---|---|---|
+| 11-row table (BIAS/Action/Conf/ATR/3-TF/Voters×3/SL×2/BOS Acc) | v3.0 | ✅ DONE | ✅ 4 symbols | session 8 |
+| 10 voters (HTF/LTF/BOS/FVG/Abs/Sweep/MTF/KZ/Cnfl/OB) | v3.0 | ✅ DONE | ✅ | |
+| P5 NO SIGNAL state (3-tier: strong/weak/no) | v3.3 | ✅ DONE | ✅ | |
+| P6 BOS Accuracy stat (last N bars) | v3.3 | ✅ DONE | ✅ | |
+| V10 OB retest voter (price enters OB zone) | v3.3 | ✅ DONE | ✅ | |
+| Cap visual elements (5 OB / 3 FVG / 5 BOS / 3 Sweep per side) | v3.4 | ✅ DONE | ✅ 4 symbols | session 8 |
+| Auto-delete oldest drawings when over cap | v3.4 | ✅ DONE | ✅ | |
+| `hideAllDrawings` master switch | v3.5 | ✅ DONE | ⏳ pending manual save | session 8 |
+| Fade by age for OBs | — | ⏳ TODO | ❌ | Priority 8 #2 |
+| Consolidate mode (merge adjacent OBs) | — | ⏳ TODO | ❌ | Priority 8 #3 |
+| Auto-remove BOS on structure reverse | — | ⏳ TODO | ❌ | Priority 8 #4 |
+| OB retest V11 distance-based weighting | — | ⏳ TODO | ❌ | Priority 8 #5 |
+| External notifications (Telegram/email/toast) | — | ⏳ DEFERRED | ❌ | alerts v2 |
+| Pine behavior unit tests (real Pine runtime) | — | ⏳ INFEASIBLE | — | would need TV in CI |
+
+### MCP server (Node.js + Chrome DevTools Protocol)
+
+| Feature | Status | Tested? | Note |
+|---|---|---|---|
+| Chart reading (state, symbol, TF, data, quotes) | ✅ DONE | ✅ 179 unit tests | |
+| Chart control (symbol, TF, type, scroll, range) | ✅ DONE | ✅ | |
+| Pine push/get/compile/analyze/check | ✅ DONE | ✅ | `tv pine` |
+| Alerts (create/list/delete) | ✅ DONE | ✅ | 2 ACEUSDT.P active |
+| Watcher (bias flip detection) | ✅ DONE | ✅ 5 scenarios | session 5, `scripts/watcher.js` |
+| Draw/UI/Eval/Stream | ✅ DONE | ✅ | |
+| Bridge for VPS deployment | ✅ DONE | ✅ | Ticket 03 |
+| HTTP server (token auth, SSE) | ✅ DONE | ✅ | Ticket 02 |
+| Chart Reader MCP server | ✅ DONE | ✅ | Ticket 01 |
+| **CI workflow** (static + unit + offline analyze) | ✅ DONE | ✅ green | session 8 |
+| **Auto-load .env.local** (zero-dep) | ✅ DONE | ✅ | session 8 |
+| VPS deployment packaging (systemd, caddy, nginx) | ✅ DONE | ✅ | Ticket 04 |
+
+### Documentation
+
+| Doc | Purpose | Size | Last update |
+|---|---|---|---|
+| `docs/CONTEXT.md` | Persistent state (you are here) | ~35KB | session 9 |
+| `docs/V3_2_PRE_CHECK.md` | v3.2 pre-check analysis | 18,408 B | session 4 |
+| `docs/V3_3_PRE_CHECK.md` | v3.3 pre-check + Round 2 | 14,249 B | session 6 |
+| `docs/V3_4_PRE_CHECK.md` | v3.4 pre-check + 3 bug-fix passes | 14,878 B | session 8 |
+| `docs/V3_5_PRE_CHECK.md` | v3.5 pre-check | 6,860 B | session 8 |
+| `docs/CONSENSUS_DASHBOARD.md` | Pre-check analysis (v3.2 + v3.3 + watcher) | 15,660 B | session 6 |
+| `docs/SESSION_4_HANDOVER.md` | Session 4 work log | 9,957 B | session 4 |
+| `docs/SESSION_6_HANDOVER.md` | Session 6 work log | 10,566 B | session 6 |
+| `docs/SESSION_7_HANDOVER.md` | Session 7 handoff | 8,389 B | session 7 |
+| `docs/WATCHER.md` | Watcher pre-check + usage | 9,580 B | session 5 |
+| `docs/ANALYSIS.md` | Project analysis | 10,638 B | session 1-2 |
+| `docs/BUILD_DEPLOY.md` | Build + deploy guide | 11,800 B | session 3 |
+| `docs/COMPETITORS.md` | Competitor analysis | 13,736 B | session 1-2 |
+| `tradingview-mcp/AGENTS.md` | Project agent instructions (84 tools) | varies | session 1-2 |
+| `tradingview-mcp/SECURITY.md` | Security policy | varies | session 1-2 |
+| `tradingview-mcp/README.md` | Project README | 32,457 B | session 1-2 |
+| `tradingview-mcp/CONTRIBUTING.md` | Contributing guide | varies | session 1-2 |
+
+---
+
+## Bug list (current state 2026-08-18)
+
+### Fixed (in code, tests, or CI)
+
+| Bug | Fixed in | How |
+|---|---|---|
+| `package.json` repo URL stale `monet88` | commit `a747961` (session 8) | Updated to `miniSHIBAinu` |
+| v3.4 title still "v3.3" | session 7 | Updated to "v3.4" |
+| Dead input `bosAccWinBars` (v3.3 leftover) | session 7 | Removed input |
+| Forward-ref CE10272 (var declared after use) | session 7 | Moved 8 var decls to top of script |
+| CI path-doubling (working-directory prefix) | commit `7d5d5f3` | Removed prefix from workflow steps |
+| CI uses `npm test` (e2e needs TV) | commit `8fa6562` | Switched to `npm run test:unit` |
+| `tests/deployment.test.js` hardcoded `TV_CDP_PORT=9333` | commit `b47459b` | Made regex-agnostic |
+| `tv pine check` REST API tests in CI | commits `b47459b` + `efaa082` | Skipped via `process.env.CI` |
+| `tests/launch.test.js:73` hardcoded `cdp_url=...:9333` | commit `4ab80fe` (session 9) | Derived from env |
+| `src/tools/health.js` + `src/cli/commands/health.js` hardcoded "port 9333" | commit `4ab80fe` (session 9) | Dynamic via `CDP_PORT` import |
+| ESM import hoisting (loadEnvFile runs after env read) | session 8 | Moved to `src/connection.js` (first imported) |
+
+### Known / can't fix
+
+| Bug | Status | Workaround |
+|---|---|---|
+| TradingView Pine Editor Save button broken via API | Won't fix (TV bug) | User must: type char + Save + Update on chart |
+| `current.pine` is GITIGNORED | By design (live script) | Backup to `current.vN.pine` before editing |
+| PowerShell `git push` doesn't read `$env:GITHUB_TOKEN` | PowerShell quirk | Embed token in URL: `git push "https://${token}@github.com/..."` |
+| 0 Pine behavior unit tests in CI | Infeasible (no Pine runtime in CI) | Manual chart validation by user + offline `tv pine analyze` + server-side `tv pine check` |
+
+### Documented limitations (not bugs)
+
+| Limitation | Where |
+|---|---|
+| Static Pine checker doesn't parse AST (regex-based) | `scripts/check-pine-declarations.mjs` header |
+| False positives on function param shadowing var name | same |
+| False positives on var re-declaration with different types | same |
+| Bridge defaults to port 9333 (VPS convention) | `src/bridge/config.js:5` — different from local TV port |
+| TV-CDP port differs by env: 9333 (VPS), 9222 (Windows local) | `.env.example` documents both |
+
+---
 
 ---
 
@@ -413,15 +542,15 @@ Xây dựng **Consensus Dashboard v3.2** — Pine Script indicator overlay trên
 ### Priority 5: ~~Confidence threshold filter~~ — ✅ DONE session 6
 ### Priority 6: ~~Backtest mode~~ — ✅ DONE session 6
 ### Priority 7: Re-create ACEUSDT.P alerts if expired
-- 5382498900: ACEUSDT.P crosses 0.15 (long breakout) — expires 2026-09-15
-- 5382498903: ACEUSDT.P < 0.13 (short breakdown) — expires 2026-09-15
+- 5382498900: ACEUSDT.P crosses 0.15 (long breakout) — expires 2026-09-15 (last fired 2026-08-17 02:42, active=false)
+- 5382498903: ACEUSDT.P < 0.13 (short breakdown) — expires 2026-09-15 (active=true)
 
-### Priority 8 (session 8+ candidates — not started):
-- "Hide all drawings" master switch (1 input, 0 logic change)
-- "Fade by age" for older OBs (color fade based on bar distance)
-- "Consolidate mode" (merge adjacent OBs of same side into one zone)
-- Auto-remove BOS line when structure reverses (cleaner chart)
-- OB retest V11: distance-based weighting (closer retest = stronger signal)
+### Priority 8 (chart UX improvements):
+- ✅ **#1: "Hide all drawings" master switch → v3.5** (session 8, pending user manual save)
+- ⏳ #2: "Fade by age" for older OBs (color fade based on bar distance)
+- ⏳ #3: "Consolidate mode" (merge adjacent OBs of same side into one zone)
+- ⏳ #4: Auto-remove BOS line when structure reverses (cleaner chart)
+- ⏳ #5: OB retest V11: distance-based weighting (closer retest = stronger signal)
 
 ---
 
@@ -429,8 +558,9 @@ Xây dựng **Consensus Dashboard v3.2** — Pine Script indicator overlay trên
 
 | File | Purpose |
 |---|---|
-| `tradingview-mcp/scripts/current.pine` | Pine Script v3.4 (current, 25,449 B, 512 lines, 21 inputs — GITIGNORED) |
-| `tradingview-mcp/scripts/current.v3.4.pine` | Backup v3.4 (25,449 B, 512 lines — same as current) |
+| `tradingview-mcp/scripts/current.pine` | Pine Script v3.5 (current, 25,997 B, 514 lines, 22 inputs — GITIGNORED) |
+| `tradingview-mcp/scripts/current.v3.5.pine` | Backup v3.5 (25,997 B, 514 lines — same as current) |
+| `tradingview-mcp/scripts/current.v3.4.pine` | Backup v3.4 (25,449 B, 512 lines, 21 inputs — pre-v3.5 rollback) |
 | `tradingview-mcp/scripts/current.v3.3.pine` | Backup v3.3 (22,361 B, 460 lines, pre-v3.4 rollback) |
 | `tradingview-mcp/scripts/current.v3.2.pine` | Backup v3.2 (19,370 B, rollback for v3.3) |
 | `tradingview-mcp/scripts/current.v3.1.pine` | Backup v3.1 (11,306 B) |
@@ -439,7 +569,7 @@ Xây dựng **Consensus Dashboard v3.2** — Pine Script indicator overlay trên
 | `tradingview-mcp/scripts/pine_push.js` | Push + compile helper (port 9222, env var) |
 | `tradingview-mcp/scripts/watcher.js` | Bias watcher (P3, 9,895 B, session 5) |
 | `tradingview-mcp/.env.local` | **CRITICAL** — has GITHUB_TOKEN for `miniSHIBAinu` account (section `#dotnear`) |
-| `docs/CONTEXT.md` | This file — persistent session context (updated session 7) |
+| `docs/CONTEXT.md` | This file — persistent session context (updated session 9, ~47KB) |
 | `docs/SESSION_6_HANDOVER.md` | Session 6 work log |
 | `docs/SESSION_7_HANDOVER.md` | Session 7 handoff (8,389 B, written session 7) |
 | `docs/WATCHER.md` | Watcher pre-check + usage (session 5) |
@@ -466,46 +596,55 @@ Xây dựng **Consensus Dashboard v3.2** — Pine Script indicator overlay trên
 Tôi đang làm việc trên dự án mtradview (TradingView MCP + Pine Script dashboard) tại G:\VIBE\mtradview.
 
 Đọc trước:
-1. docs/CONTEXT.md (persistent state — session 7 final, v3.4 deployed)
-2. tradingview-mcp/scripts/current.pine (Pine Script v3.4 — 25,449 B, 512 lines, 21 inputs)
-3. tradingview-mcp/scripts/current.v3.3.pine (pre-v3.4 backup — 22,361 B, 460 lines)
-4. tradingview-mcp/scripts/current.v3.4.pine (v3.4 snapshot — 25,449 B)
+1. docs/CONTEXT.md (persistent state — session 9 final, v3.5 in editor pending manual save)
+2. tradingview-mcp/scripts/current.pine (Pine Script v3.5 — 25,997 B, 514 lines, 22 inputs)
+3. tradingview-mcp/scripts/current.v3.5.pine (v3.5 snapshot — 25,997 B)
+4. tradingview-mcp/scripts/current.v3.4.pine (v3.4 backup — 25,449 B, pre-v3.5 rollback)
 5. tradingview-mcp/AGENTS.md (84 tools docs)
 6. tradingview-mcp/scripts/watcher.js (Bias Watcher — 9,895 B, end-to-end tested)
+7. tradingview-mcp/scripts/check-pine-declarations.mjs (static Pine CE10272 checker)
 
 🚨 CRITICAL CHECKPOINT:
 - **Project account = `miniSHIBAinu`** (id 93213299), NOT `monet88` (user has corrected multiple times)
 - **Token in `G:\VIBE\mtradview\tradingview-mcp\.env.local` section `#dotnear`** belongs to `miniSHIBAinu`
-- **Remote URL** is `https://github.com/miniSHIBAinu/tradingview-mcp.git` (was `monet88/...` before, changed session 7)
+- **Remote URL** is `https://github.com/miniSHIBAinu/tradingview-mcp.git`
 - **VERIFY with `gh api user` BEFORE any push**
 - **`current.pine` is GITIGNORED** — only `current.vN.pine` backups tracked
-- **TradingView Save button broken via API** — user must do manual Save + Add to chart for v3.5+
+- **TradingView Save button broken via API** — user must do manual Save + Add to chart
+- **TV CDP port: 9222 on Windows local, 9333 on VPS** — auto-load via `.env.local` (now in repo + auto-loaded)
+- **PowerShell quirk**: `git push` doesn't read `$env:GITHUB_TOKEN`. Embed in URL: `git push "https://${token}@github.com/..."`
+- **`http.postBuffer 524288000`** in global gitconfig (500MB for large repo pushes)
 
 Verify state:
-- TV Desktop đang chạy port 9222 (env TV_CDP_PORT=9222 cho MCP)
-- CodeGraph installed, indexed 80 files
-- V3.4 production-ready: scripts/current.pine (25,449 B, 512 lines, 21 inputs, compile clean 0 errors)
-- V3.4 source loaded in Pine Editor (512 lines, "Consensus Dashboard v3.4")
-- V3.3 backup: scripts/current.v3.3.pine (22,361 B) for rollback
-- V3.4 backup: scripts/current.v3.4.pine (25,449 B)
-- Branch: chore/tdv-vps-foundation @ 205d3f5 (3 commits ahead, all pushed to `miniSHIBAinu/tradingview-mcp`)
-- Watcher ready: TV_CDP_PORT=9222 node scripts/watcher.js [--once] [--interval N] [--quiet]
+- TV Desktop đang chạy port 9222 (env TV_CDP_PORT=9222, auto-loaded from .env.local)
+- V3.5 production-ready: scripts/current.pine (25,997 B, 514 lines, 22 inputs, compile clean 0 errors)
+- V3.5 source loaded in Pine Editor (514 lines, "Consensus Dashboard v3.5") — **NEEDS USER MANUAL SAVE**
+- V3.4 backup: scripts/current.v3.4.pine (25,449 B) for rollback
+- V3.3 backup: scripts/current.v3.3.pine (22,361 B) for older rollback
+- V3.5 backup: scripts/current.v3.5.pine (25,997 B)
+- Branch: chore/tdv-vps-foundation @ 4ab80fe (10+ commits, last push verified green CI)
+- CI green: GitHub Actions workflow "Pine Script check" runs on push/PR
+- 179/179 unit tests pass locally with CI=true
+- Watcher ready: `node scripts/watcher.js` (auto-loads .env.local)
 - 2 user manual alerts intact (ACEUSDT.P from session 3, expire 2026-09-15)
 
 Deploy status:
-- v3.4 LIVE on chart (verified: SNDK 15m screenshot shows clean chart, NO SIGNAL state, BOS Acc 3/6 50%)
-- 4 maxVis inputs working: 5 OB / 3 FVG / 5 BOS / 3 Sweep max per side
-- Chart instance ID varies (user added via "Add to chart" — see chart's status line)
+- v3.4 currently LIVE on chart (user verified session 7, multi-symbol session 8)
+- v3.5 source in Pine Editor Monaco (514 lines) — chart still shows v3.4 until user does manual Save
+- Cap logic working: 5 OB / 3 FVG / 5 BOS / 3 Sweep max per side
+- All 4 multi-symbol tests pass: OIL 15m, GOLD 1h, GIGGLE 1h, ACE 15m
 
 Pending work:
-- ~~Priority 1: Deploy v3.4~~ → ✅ DONE session 7 (manual user click after auto-deploy blocked)
-- Priority 2: Test v3.4 on OIL, GOLD, GIGGLE, ACE (SNDK already verified)
-- ~~Priority 3: Alerts integration~~ → ✅ DONE session 5
-- ~~Priority 4: OB retest as V10 voter~~ → ✅ DONE session 6
-- ~~Priority 5: Confidence threshold filter~~ → ✅ DONE session 6
-- ~~Priority 6: Backtest mode~~ → ✅ DONE session 6
-- Priority 7: Re-create ACEUSDT.P alerts if expired (2026-09-15)
-- Priority 8 (session 8+): hide all drawings switch, fade by age, consolidate mode, auto-remove BOS on reverse, OB retest V11
+- ~~Priority 1-6~~ → ✅ ALL DONE (sessions 5-7)
+- Priority 7: Re-create ACEUSDT.P alerts if expired (2026-09-15) — currently 1 active, 1 fired
+- ~~Priority 8 #1: hideAllDrawings~~ → ✅ DONE session 8 (pending user manual save)
+- Priority 8 #2-5: Fade by age, Consolidate mode, Auto-remove BOS, OB retest V11
+
+When updating this file:
+- After EVERY important change (new feature, bug fix, deploy, external state change)
+- Before EVERY new session
+- When user gives feedback that should persist across sessions
+- Format: append to "Việc đã làm" chronological section, update Feature Status / Bug list / File locations as needed
 
 User feedback gần nhất:
 - Session 5: "Bạn là CEO dự án, chọn giải pháp + tiếp tục" → chọn P3 Alerts
@@ -513,6 +652,8 @@ User feedback gần nhất:
 - Session 7: "add chart nhìn như bãi rác vậy" → v3.4 visual cleanup done
 - Session 7: "Pre-check trước khi coi là hoàn thành: Logic/Workflow/Missing features/Risks, kiểm tra 1 vòng nữa, fix all bugs, báo done nếu mọi thứ ok" → 3 bug-fix passes complete, deployed
 - Session 7: "wtf đã bảo monet88 ko liên quan rồi mà" → account corrected to `miniSHIBAinu`, repo moved, force-pushed
+- Session 8: "làm tất cả bạn" (4 tasks: v3.5, TV_CDP_PORT, docs migrate, CI) → 8 commits, CI green
+- Session 9: "Pre-check 4 tiêu chí, fix all bugs, ghi vào CONTEXT.md, check /improve-codebase-architecture, có cần testsprite ko?" → 2 more bugs found+fixed, full Feature Status + Bug list added to CONTEXT.md, decided testsprite NOT needed
 
 Critical gotchas (read these!):
 1. TradingView Pine Editor's Save button is BROKEN via API — `setValue()` doesn't trigger Monaco's onDidChangeContent event. Library cache never updates via API. User must manually type a char + click Save.
