@@ -1,0 +1,52 @@
+name: Pine Script check
+
+# Triggers:
+# - On push to main / chore/tdv-vps-foundation
+# - On PR to main
+# - Manual via Actions tab
+on:
+  push:
+    branches: [main, chore/tdv-vps-foundation]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Static + offline analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        working-directory: tradingview-mcp
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: tradingview-mcp
+        run: npm test
+
+      - name: Static check Pine declarations (declare-before-use)
+        working-directory: tradingview-mcp
+        run: |
+          for f in scripts/current.v*.pine; do
+            echo "Checking $f"
+            node scripts/check-pine-declarations.mjs "$f" || exit 1
+          done
+
+      - name: Offline Pine static analysis
+        working-directory: tradingview-mcp
+        # tv pine analyze doesn't need a running TV. Catches additional issues
+        # beyond our custom declare-before-use checker.
+        run: |
+          for f in scripts/current.v*.pine; do
+            echo "Analyzing $f"
+            node src/cli/index.js pine analyze -f "$f" || exit 1
+          done
