@@ -129,7 +129,7 @@ describe('CLI — pine analyze (offline)', () => {
   });
 });
 
-describe('CLI — pine check (server compile)', () => {
+describe('CLI — pine check (server compile)', { skip: process.env.CI ? 'requires TradingView API access (skipped in CI)' : false }, () => {
   it('compiles valid Pine Script', () => {
     const source = '//@version=6\nindicator("test")\nplot(close)';
     const { stdout, exitCode } = run(['pine', 'check'], { input: source });
