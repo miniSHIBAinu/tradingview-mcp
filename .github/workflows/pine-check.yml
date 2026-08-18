@@ -26,15 +26,14 @@ jobs:
           node-version: '20'
 
       - name: Install deps
-        working-directory: tradingview-mcp
+        # The .github/workflows/ files are INSIDE the tradingview-mcp repo,
+        # so the checkout root is already the project root. No working-directory needed.
         run: npm ci
 
       - name: Run unit tests
-        working-directory: tradingview-mcp
         run: npm test
 
       - name: Static check Pine declarations (declare-before-use)
-        working-directory: tradingview-mcp
         run: |
           for f in scripts/current.v*.pine; do
             echo "Checking $f"
@@ -42,7 +41,6 @@ jobs:
           done
 
       - name: Offline Pine static analysis
-        working-directory: tradingview-mcp
         # tv pine analyze doesn't need a running TV. Catches additional issues
         # beyond our custom declare-before-use checker.
         run: |
