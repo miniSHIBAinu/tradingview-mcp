@@ -1,4 +1,13 @@
 import CDP from 'chrome-remote-interface';
+import { existsSync } from 'node:fs';
+
+// Auto-load .env.local from cwd if it exists (Node 20.12+). Zero-dep, file-optional.
+// Loaded here (not in CLI entry) so static `import` hoisting in other modules
+// doesn't read process.env before this runs. Lets users set TV_CDP_PORT=9222
+// in .env.local once instead of exporting env vars in every shell.
+if (existsSync('.env.local')) {
+  process.loadEnvFile('.env.local');
+}
 
 let client = null;
 let targetInfo = null;

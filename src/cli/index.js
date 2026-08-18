@@ -9,6 +9,9 @@
  * Pipe-friendly: every command outputs JSON for use with jq.
  */
 
+// Note: .env.local auto-load is done in src/connection.js (not here)
+// so static `import` hoisting doesn't read process.env before loadEnvFile runs.
+
 // Register all commands
 import './commands/health.js';
 import './commands/chart.js';
